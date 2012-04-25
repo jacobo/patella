@@ -51,10 +51,7 @@ module Patella::Patella
         end
 
         def #{symbol}(*args)
-          patella_#{symbol}(args, {:no_backgrounding => #{options[:no_backgrounding]}})
-        end 
-
-        def patella_#{symbol}(args, opts)
+          opts = {:no_backgrounding => #{options[:no_backgrounding]}}
           cache_key = self.patella_key('#{symbol}',args)
           promise = { 'promise' => true }
 
