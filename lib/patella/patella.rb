@@ -3,6 +3,14 @@ require 'json'
 
 module Patella::Patella
 
+  def self.cached_invoke(object, the_method, overriden_thing, expires_in, soft_expiration, args)
+    cache_key = object.patella_key(the_method,args)
+    result = args.any? ? object.send(overriden_thing, *args) : object.send(overriden_thing)
+    json = {'result' => result, 'soft_expiration' => Time.now + expires_in - soft_expiration}.to_json
+    Rails.cache.write(cache_key, json, :expires_in => expires_in)
+    result
+  end
+
   def self.included(base)
     base.extend ClassMethods
     base.send :include, Patella::SendLater
@@ -34,11 +42,7 @@ module Patella::Patella
         alias #{original_method} #{symbol}
 
         def caching_#{symbol}(args)
-          cache_key = self.patella_key('#{symbol}',args)
-          result = args.any? ? #{original_method}(*args) : #{original_method}()
-          json = {'result' => result, 'soft_expiration' => Time.now + #{options[:expires_in]} - #{ options[:soft_expiration]}}.to_json
-          Rails.cache.write(cache_key, json, :expires_in => #{options[:expires_in]})
-          result
+          Patella::Patella.cached_invoke(self, '#{symbol}', '#{original_method}', #{options[:expires_in]}, #{options[:soft_expiration]}, args)
         end
 
         def clear_#{symbol}(*args)
