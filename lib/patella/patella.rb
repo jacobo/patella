@@ -3,12 +3,8 @@ require 'json'
 
 module Patella::Patella
 
-  def self.cached_invoke(object, the_method, overriden_thing, expires_in, soft_expiration, args)
-    cache_key = object.patella_key(the_method,args)
-    result = args.any? ? object.send(overriden_thing, *args) : object.send(overriden_thing)
-    json = {'result' => result, 'soft_expiration' => Time.now + expires_in - soft_expiration}.to_json
-    Rails.cache.write(cache_key, json, :expires_in => expires_in)
-    result
+  def self.patellas
+    @@patellas ||= {}
   end
 
   def self.included(base)
@@ -26,6 +22,18 @@ module Patella::Patella
       "patella/#{self.to_s}//#{symbol}/#{Digest::MD5.hexdigest(args.to_json)}"
     end
 
+    class PatellaWrapper
+      def initialize(symbol, options)
+      end
+      def cached_invoke(object, the_method, overriden_thing, expires_in, soft_expiration, args)
+        cache_key = object.patella_key(the_method,args)
+        result = args.any? ? object.send(overriden_thing, *args) : object.send(overriden_thing)
+        json = {'result' => result, 'soft_expiration' => Time.now + expires_in - soft_expiration}.to_json
+        Rails.cache.write(cache_key, json, :expires_in => expires_in)
+        result
+      end
+    end
+
     def patella_reflex(symbol, options = {})      
       options[:expires_in] ||= 30*60
       options[:soft_expiration] ||= 0
@@ -33,16 +41,17 @@ module Patella::Patella
       is_class = options[:class_method]
 
       original_method = :"_unpatellaed_#{symbol}"
+      the_patella = PatellaWrapper.new(symbol, options)
+      Patella::Patella.patellas[the_patella.object_id] = the_patella
 
       method_definitions = <<-EOS, __FILE__, __LINE__ + 1
-
         if method_defined?(:#{original_method})
           raise "Already patella'd #{symbol}"
         end
         alias #{original_method} #{symbol}
 
         def caching_#{symbol}(args)
-          Patella::Patella.cached_invoke(self, '#{symbol}', '#{original_method}', #{options[:expires_in]}, #{options[:soft_expiration]}, args)
+          Patella::Patella.patellas[#{the_patella.object_id}].cached_invoke(self, '#{symbol}', '#{original_method}', #{options[:expires_in]}, #{options[:soft_expiration]}, args)
         end
 
         def clear_#{symbol}(*args)
@@ -103,7 +112,7 @@ module Patella::Patella
       if is_class
         (class << self; self; end).class_eval *method_definitions
       else
-        class_eval *method_definitions
+        self.class_eval *method_definitions
       end
     end
   end
