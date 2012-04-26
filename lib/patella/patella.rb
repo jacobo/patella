@@ -12,26 +12,23 @@ module Patella::Patella
     base.send :include, Patella::SendLater
   end
 
-  def patella_key(symbol, args)
-    id_param = respond_to?(:id) ? self.id : nil
-    "patella/#{self.class.to_s}/#{id_param}/#{symbol}/#{Digest::MD5.hexdigest(args.to_json)}"
-  end
-
   module ClassMethods
-    def patella_key(symbol, args)
-      "patella/#{self.to_s}//#{symbol}/#{Digest::MD5.hexdigest(args.to_json)}"
-    end
-
     class PatellaWrapper
-      def initialize(wrapped_method_name, implementation, options)
+      def initialize(wrapped_method_name, implementation, is_class, options)
         @wrapped_method_name = wrapped_method_name
         @implementation = implementation
         @options = options
+        @is_class = is_class
+      end
+      def patella_key(object, args)
+        id_param = (!@is_class && object.respond_to?(:id)) ? object.id : nil
+        name = @is_class ? object.to_s : object.class.to_s
+        "patella/#{name}/#{id_param}/#{@wrapped_method_name}/#{Digest::MD5.hexdigest(args.to_json)}"
       end
       def cached_invoke(object, args)
         expires_in = @options[:expires_in]
         soft_expiration = @options[:soft_expiration]
-        cache_key = object.patella_key(@wrapped_method_name,args)
+        cache_key = patella_key(object,args)
         result = args.any? ? object.send(@implementation, *args) : object.send(@implementation)
         json = {'result' => result, 'soft_expiration' => Time.now + expires_in - soft_expiration}.to_json
         Rails.cache.write(cache_key, json, :expires_in => expires_in)
@@ -42,7 +39,7 @@ module Patella::Patella
         expires_in = @options[:expires_in]
         soft_expiration = @options[:soft_expiration]
         cached_invoke_method = "caching_#{@wrapped_method_name}".to_sym
-        cache_key = object.patella_key(@wrapped_method_name,args)
+        cache_key = patella_key(object,args)
         promise = { 'promise' => true }
 
         json = Rails.cache.fetch(cache_key, :expires_in => expires_in, :force => !Rails.caching?) do
@@ -84,6 +81,10 @@ module Patella::Patella
 
         PatellaResult.new val, loading
       end
+      def clear(args)
+        cache_key = patella_key(object,args)
+        Rails.cache.delete(cache_key)
+      end
     end
 
     def patella_reflex(symbol, options = {})      
@@ -93,7 +94,7 @@ module Patella::Patella
       is_class = options[:class_method]
 
       original_method = :"_unpatellaed_#{symbol}"
-      the_patella = PatellaWrapper.new(symbol, original_method, options)
+      the_patella = PatellaWrapper.new(symbol, original_method, is_class, options)
       Patella::Patella.patellas[the_patella.object_id] = the_patella
 
       method_definitions = <<-EOS, __FILE__, __LINE__ + 1
@@ -107,8 +108,7 @@ module Patella::Patella
         end
 
         def clear_#{symbol}(*args)
-          cache_key = self.patella_key('#{symbol}',args)
-          Rails.cache.delete(cache_key)
+          Patella::Patella.patellas[#{the_patella.object_id}].clear(self, args)
         end
 
         def #{symbol}(*args)

@@ -102,18 +102,20 @@ class PatellaTest < ActiveSupport::TestCase
   end
 
   def test_keys
+    pat = Patella::Patella.patellas.values.detect{|p| p.send(:instance_variable_get, "@wrapped_method_name") == :foo }
+
     d = Dummy.new 2
-    assert_equal "patella/Dummy/2/foo/#{md5 [].to_json}", d.patella_key(:foo,[])
-    assert_equal "patella/Dummy/2/foo/#{md5 [1].to_json}", d.patella_key(:foo,[1])
-    assert_equal "patella/Dummy/2/foo/#{md5 [1,3].to_json}", d.patella_key(:foo,[1,3])
-    assert_equal "patella/Dummy/2/foo/#{md5 [1,"asdf"].to_json}", d.patella_key(:foo,[1,"asdf"])
-    assert_equal "patella/Dummy/2/foo/#{md5 [1,"asdf"*1000].to_json}", d.patella_key(:foo,[1, ("asdf"*1000)])
+    assert_equal "patella/Dummy/2/foo/#{md5 [].to_json}", pat.patella_key(d,[])
+    assert_equal "patella/Dummy/2/foo/#{md5 [1].to_json}", pat.patella_key(d,[1])
+    assert_equal "patella/Dummy/2/foo/#{md5 [1,3].to_json}", pat.patella_key(d,[1,3])
+    assert_equal "patella/Dummy/2/foo/#{md5 [1,"asdf"].to_json}", pat.patella_key(d,[1,"asdf"])
+    assert_equal "patella/Dummy/2/foo/#{md5 [1,"asdf"*1000].to_json}", pat.patella_key(d,[1, ("asdf"*1000)])
 
     d3 = Dummy.new 3
-    assert_equal "patella/Dummy/3/foo/#{md5 [].to_json}", d3.patella_key(:foo,[])
-    assert_equal "patella/Dummy/3/foo/#{md5 [1].to_json}", d3.patella_key(:foo,[1])
-    assert_equal "patella/Dummy/3/foo/#{md5 [1,3].to_json}", d3.patella_key(:foo,[1,3])
-    assert_equal "patella/Dummy/3/foo/#{md5 [1,"asdf" * 1000].to_json}", d3.patella_key(:foo,[1,"asdf" * 1000])
+    assert_equal "patella/Dummy/3/foo/#{md5 [].to_json}", pat.patella_key(d3,[])
+    assert_equal "patella/Dummy/3/foo/#{md5 [1].to_json}", pat.patella_key(d3,[1])
+    assert_equal "patella/Dummy/3/foo/#{md5 [1,3].to_json}", pat.patella_key(d3,[1,3])
+    assert_equal "patella/Dummy/3/foo/#{md5 [1,"asdf" * 1000].to_json}", pat.patella_key(d3,[1,"asdf" * 1000])
   end
 
   def test_soft_expiration
